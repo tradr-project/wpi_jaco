@@ -41,6 +41,7 @@ jaco_joy_teleop::jaco_joy_teleop()
   //initialize everything
   stopMessageSentArm = true;
   stopMessageSentFinger = true;
+  stopMessageSentJoint = true;
   EStopEnabled = false;
   helpDisplayed = false;
   mode = ARM_CONTROL;
@@ -53,6 +54,11 @@ jaco_joy_teleop::jaco_joy_teleop()
   cartesianCmd.armCommand = true;
   cartesianCmd.fingerCommand = false;
   cartesianCmd.repeat = true;
+  jointCmd.position = false;
+  jointCmd.armCommand = true;
+  jointCmd.fingerCommand = false;
+  jointCmd.repeat = true;
+  jointCmd.joints.resize(6);
 
   ROS_INFO("Joystick teleop started for: %s", arm_name_.c_str());
 
@@ -223,7 +229,7 @@ void jaco_joy_teleop::joy_cback(const sensor_msgs::Joy::ConstPtr& joy)
   else
     helpDisplayed = false;
 
-  int buttonIndex;
+  int buttonIndex, buttonIndex_arm, buttonIndex_finger;
 
   switch (mode)
   {
@@ -362,6 +368,84 @@ void jaco_joy_teleop::joy_cback(const sensor_msgs::Joy::ConstPtr& joy)
 
         ROS_INFO("Activated arm control mode");
       }
+      if(joy->buttons.at(3) == 1)
+      {
+        //cancel trajectory and switch to arm control mode
+        fingerCmd.fingers[0] = 0.0;
+        fingerCmd.fingers[1] = 0.0;
+        fingerCmd.fingers[2] = 0.0;
+        angular_cmd.publish(fingerCmd);
+        mode = JOINT_CONTROL;
+
+        ROS_INFO("Activated arm joint control mode");
+      }
+      break;
+    case JOINT_CONTROL:
+      //individual joint control
+      // Joint 1 controlled by left thumbstick (left/right).
+      jointCmd.joints[0] = -joy->axes.at(0) * MAX_ANG_VEL * angular_throttle_factor;
+      // Joint 2 controlled by left thumbstick (up/down).
+      jointCmd.joints[1] = -joy->axes.at(1) * MAX_ANG_VEL * angular_throttle_factor;
+      // Joint 3 controlled by left triggers
+      if (joy->buttons.at(4) == 1)
+        jointCmd.joints[2] = -MAX_ANG_VEL * angular_throttle_factor;
+      else
+        jointCmd.joints[2] = (0.5 - joy->axes.at(2) / 2.0) * MAX_ANG_VEL * angular_throttle_factor;
+      // Joint 4 controlled by right thumbstick (left/right).
+      jointCmd.joints[3] = -joy->axes.at(3) * MAX_ANG_VEL * angular_throttle_factor;
+      // Joint 5 controlled by right thumbstick (up/down).
+      jointCmd.joints[4] = -joy->axes.at(4) * MAX_ANG_VEL * angular_throttle_factor;
+      // Joint 6 controlled by right triggers
+      if (joy->buttons.at(5) == 1)
+        jointCmd.joints[5] = -MAX_ANG_VEL * angular_throttle_factor;
+      else
+        jointCmd.joints[5] = (0.5 - joy->axes.at(5) / 2.0) * MAX_ANG_VEL * angular_throttle_factor;
+
+      //mode switching
+      if (controllerType == DIGITAL)
+        buttonIndex = 1;
+      else
+      {
+        buttonIndex_arm = 0;
+        buttonIndex_finger = 2;
+      }
+        
+      if (joy->buttons.at(buttonIndex_arm) == 1)
+      {
+        //cancel trajectory and switch to arm control mode
+        fingerCmd.fingers[0] = 0.0;
+        fingerCmd.fingers[1] = 0.0;
+        fingerCmd.fingers[2] = 0.0;
+        angular_cmd.publish(fingerCmd);
+        cartesianCmd.arm.linear.x = 0.0;
+        cartesianCmd.arm.linear.y = 0.0;
+        cartesianCmd.arm.linear.z = 0.0;
+        cartesianCmd.arm.angular.x = 0.0;
+        cartesianCmd.arm.angular.y = 0.0;
+        cartesianCmd.arm.angular.z = 0.0;
+        cartesian_cmd.publish(cartesianCmd);
+        mode = ARM_CONTROL;
+
+        ROS_INFO("Activated arm control mode");
+      }
+      if (joy->buttons.at(buttonIndex_finger) == 1)
+      {
+        //cancel trajectory and switch to finger control mode
+        fingerCmd.fingers[0] = 0.0;
+        fingerCmd.fingers[1] = 0.0;
+        fingerCmd.fingers[2] = 0.0;
+        angular_cmd.publish(fingerCmd);
+        cartesianCmd.arm.linear.x = 0.0;
+        cartesianCmd.arm.linear.y = 0.0;
+        cartesianCmd.arm.linear.z = 0.0;
+        cartesianCmd.arm.angular.x = 0.0;
+        cartesianCmd.arm.angular.y = 0.0;
+        cartesianCmd.arm.angular.z = 0.0;
+        cartesian_cmd.publish(cartesianCmd);
+        mode = FINGER_CONTROL;
+
+        ROS_INFO("Activated finger control mode");
+      }
       break;
   }
 }
@@ -410,6 +494,24 @@ void jaco_joy_teleop::publish_velocity()
         //send the finger velocity command
         angular_cmd.publish(fingerCmd);
         stopMessageSentFinger = false;
+      }
+      break;
+    case JOINT_CONTROL:
+      //only publish stop message once; this allows other nodes to publish velocities
+      //while the controller is not being used
+      if (jointCmd.joints[0] == 0.0 && jointCmd.joints[1] == 0.0 && jointCmd.joints[2] == 0.0 && jointCmd.joints[3] == 0.0 && jointCmd.joints[4] == 0.0 && jointCmd.joints[5] == 0.0)
+      {
+        if (!stopMessageSentJoint)
+        {
+          angular_cmd.publish(jointCmd);
+          stopMessageSentJoint = true;
+        }
+      }
+      else
+      {
+        //send the finger velocity command
+        angular_cmd.publish(jointCmd);
+        stopMessageSentJoint = false;
       }
       break;
   }

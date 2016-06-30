@@ -21,6 +21,7 @@
 //Control modes
 #define ARM_CONTROL 0 
 #define FINGER_CONTROL 1
+#define JOINT_CONTROL 2
 
 //Joystick types
 #define ANALOG 0 //analog triggers
@@ -90,6 +91,7 @@ private:
 
   wpi_jaco_msgs::AngularCommand fingerCmd; /*!< finger movement command */
   wpi_jaco_msgs::CartesianCommand cartesianCmd; /*!< cartesian movement command */
+  wpi_jaco_msgs::AngularCommand jointCmd; /*!< joint movement command */
 
   int mode; /*!< the control mode */
   int controllerType; /*!< the type of joystick controller */
@@ -98,6 +100,7 @@ private:
   double finger_throttle_factor; /*!< factor for reducing the finger speed */
   bool stopMessageSentArm; /*!< flag to prevent the arm stop command from being sent repeatedly when the controller is in the neutral position */
   bool stopMessageSentFinger; /*!< flag to prevent the finger stop command from being sent repeatedly when the controller is in the neutral position */
+  bool stopMessageSentJoint; /*!< flag to prevent the joint stop command from being sent repeatedly when the controller is in the neutral position */
   bool initLeftTrigger; /*!< flag for whether the left trigger is initialized */
   bool initRightTrigger; /*!< flag for whether the right trigger is initialized */
   bool calibrated; /*!< flag for whether the controller is calibrated, this only affects controllers with analog triggers */
